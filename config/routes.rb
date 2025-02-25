@@ -3,6 +3,8 @@ Rails.application.routes.draw do
 
   authenticated :user do
     root to: "home#index", as: :authenticated_root
+    post "generate_summaries", to: "home#generate_summaries"
+    get "download_summaries", to: "home#download_summaries"
   end
 
   unauthenticated do

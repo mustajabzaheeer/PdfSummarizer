@@ -50,8 +50,12 @@ gem 'sidekiq'  # For background jobs
 gem 'httparty'  # For API requests
 gem 'prawn'  # For generating PDF reports if needed
 gem 'devise'
-
-
+gem 'pdf-reader'
+gem "rubyXL"     # For writing Excel output
+gem "openai"     # For AI summarization
+gem 'pry-rails'
+gem 'faraday'
+gem 'write_xlsx'
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 # gem "image_processing", "~> 1.2"
 
