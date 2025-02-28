@@ -14,7 +14,7 @@ class HomeController < ApplicationController
     results = process_topics_with_openai(topics, pdf_text)
     file_path = generate_result_excel(results)
   
-    redirect_to download_summaries_path(file_name: File.basename(file_path))
+    render json: { file_url: download_summaries_path(file_name: File.basename(file_path)) }
   end  
 
   def download_summaries
@@ -53,42 +53,71 @@ class HomeController < ApplicationController
 
   def process_topics_with_openai(topics, pdf_text)
     token = ENV["openai_api_key"]
-    connection = Faraday.new('https://api.openai.com')
+    connection = Faraday.new(url: 'https://api.openai.com') do |faraday|
+      faraday.request :json
+      faraday.response :json
+      faraday.options.timeout = 120  # Increase read timeout (default is usually ~60s)
+      faraday.options.open_timeout = 30  # Increase open timeout
+      faraday.adapter Faraday.default_adapter
+    end
     headers = { authorization: "Bearer #{token}", 'Content-Type': 'application/json' }
+
+    # prompt = <<~PROMPT
+    #   You are a helpful assistant. You will receive a list of topics and a document split into multiple pages.
+    #   Find all occurrences of each topic and provide:
+    #   - The **page number**
+    #   - The **paragraph number**
+    #   - The **paragraph itself**
+    #   - A **summary of the relevant paragraph**
+      
+    #   ### Topics:
+    #   #{topics.join(", ")}
+
+    #   ### Document:
+    #   #{pdf_text.map { |p| "Page #{p[:page]}:\n#{p[:text]}" }.join("\n\n")}
+      
+    #   Provide results strictly in this format. Don't change the format:
+    #   "Topic: <topic>, Page: <page_number>, Paragraph: <paragraph_number>, ParagraphContext: <paragraph>, Summary: <summary>"
+    # PROMPT
 
     prompt = <<~PROMPT
       You are a helpful assistant. You will receive a list of topics and a document split into multiple pages.
       Find all occurrences of each topic and provide:
       - The **page number**
       - The **paragraph number**
-      - A **summary of the relevant paragraph**
-      
+      - The **paragraph itself**
+      - A **summary of the relevant paragraph** (do not use commas unless necessary for clarity)
+
       ### Topics:
       #{topics.join(", ")}
 
       ### Document:
       #{pdf_text.map { |p| "Page #{p[:page]}:\n#{p[:text]}" }.join("\n\n")}
-      
-      Provide results in this format:
-      "Topic: <topic>, Page: <page_number>, Paragraph: <paragraph_number>, Summary: <summary>"
+
+      Provide results **strictly** in this format:
+      Topic: <topic>, Page: <page_number>, Paragraph: <paragraph_number>, ParagraphContext: <paragraph>, Summary: "<summary>"
+      The **summary must always be enclosed in double quotes** to ensure correct parsing.
     PROMPT
 
     messages = [{ role: 'system', content: prompt }]
 
     response = connection.post('/v1/chat/completions') do |req|
       req.headers = headers
-      req.body = { model: 'gpt-4o', messages: messages }.to_json
-    end
+      req.body = { 
+        model: 'gpt-4o', 
+        messages: messages,
+      }.to_json
+    end    
 
-    raw_results = JSON.parse(response.body).dig("choices", 0, "message", "content") || ""
+    raw_results = response.body.dig("choices", 0, "message", "content") || ""
     
     # Parse response into structured data
     results = []
     raw_results.each_line do |line|
-      match = line.match(/Topic: (.+?), Page: (\d+), Paragraph: (\d+), Summary: (.+)/)
+      match = line.match(/Topic: (.+?), Page: (\d+), Paragraph: ([\d.]+), ParagraphContext: (.+?) Summary: "?(.+?)"?$/)
       next unless match
       
-      results << { topic: match[1], page: match[2].to_i, paragraph: match[3].to_i, summary: match[4] }
+      results << { topic: match[1], page: match[2].to_i, paragraph: match[3].to_i, paragraph_text: match[4], summary: match[5] }
     end
 
     results
@@ -102,13 +131,15 @@ class HomeController < ApplicationController
     worksheet.write(0, 0, "Topic")
     worksheet.write(0, 1, "Page Number")
     worksheet.write(0, 2, "Paragraph Number")
-    worksheet.write(0, 3, "Summary")
+    worksheet.write(0, 3, "Paragraph")
+    worksheet.write(0, 4, "Summary")
 
     results.each_with_index do |row, index|
       worksheet.write(index + 1, 0, row[:topic])
       worksheet.write(index + 1, 1, row[:page])
       worksheet.write(index + 1, 2, row[:paragraph])
-      worksheet.write(index + 1, 3, row[:summary])
+      worksheet.write(index + 1, 3, row[:paragraph_text])
+      worksheet.write(index + 1, 4, row[:summary])
     end
 
     workbook.close

@@ -1,6 +1,6 @@
 <h2 style="justify-self: center;">Upload Files</h2>
 
-<%= form_with url: generate_summaries_path, method: :post, multipart: true, class: "container", local: true do |f| %>
+<%= form_with url: generate_summaries_path, method: :post, multipart: true, class: "container", local: false, id: "summaryForm" do |f| %>
   <div class="mb-3">
     <label for="excel_file" class="form-label">Upload Excel File (Topics)</label>
     <%= f.file_field :excel_file, class: "form-control", required: true %>
@@ -11,10 +11,52 @@
     <%= f.file_field :pdf_files, multiple: true, class: "form-control", required: true %>
   </div>
 
-  <%= f.submit "Generate Summary", class: "btn btn-primary" %>
+  <button type="submit" class="btn btn-primary" id="generateButton">Generate Summary</button>
+
+  <div id="loader" style="display: none;">
+    <p>Processing... Please wait.</p>
+  </div>
 <% end %>
 
-<% if @generated_file %>
+<div id="downloadSection" style="display: none; text-align: right;" class="container">
   <h3>Download Summary</h3>
-  <a href="<%= url_for(@generated_file) %>" class="btn btn-success">Download Excel</a>
-<% end %>
+  <a href="#" class="btn btn-success" id="downloadButton">Download Excel</a>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const form = document.getElementById("summaryForm");
+    const generateButton = document.getElementById("generateButton");
+    const loader = document.getElementById("loader");
+    const downloadSection = document.getElementById("downloadSection");
+    const downloadButton = document.getElementById("downloadButton");
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault(); // Prevent normal form submission
+
+      generateButton.disabled = true; // Disable the button
+      loader.style.display = "block"; // Show the loader
+
+      const formData = new FormData(form);
+
+      fetch(form.action, {
+        method: "POST",
+        body: formData,
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      })
+      .then(response => response.json())
+      .then(data => {
+        loader.style.display = "none"; // Hide loader
+        downloadSection.style.display = "block"; // Show download button
+        downloadButton.href = data.file_url; // Set file URL
+      })
+      .catch(error => {
+        console.error("Error:", error);
+        loader.innerHTML = "<p style='color:red;'>An error occurred.</p>";
+      })
+      .finally(() => {
+        generateButton.disabled = false; // Re-enable the button after process
+      });
+    });
+  });
+</script>
