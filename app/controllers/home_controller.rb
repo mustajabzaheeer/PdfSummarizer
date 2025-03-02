@@ -86,7 +86,7 @@ class HomeController < ApplicationController
       - The **page number**
       - The **paragraph number**
       - The **paragraph itself**
-      - A **summary of the relevant paragraph** (do not use commas unless necessary for clarity)
+      - A **summary of the relevant paragraph in Hebrew** (do not use commas unless necessary for clarity)
 
       ### Topics:
       #{topics.join(", ")}
