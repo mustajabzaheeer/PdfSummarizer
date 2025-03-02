@@ -32,7 +32,7 @@ class HomeController < ApplicationController
 
   def extract_topics_from_excel(file)
     xlsx = Roo::Spreadsheet.open(file.path)
-    xlsx.sheet(0).column(1).compact
+    xlsx.sheet(0).column(1).drop(1).compact
   end
 
   def extract_text_from_pdfs(files)
@@ -56,8 +56,8 @@ class HomeController < ApplicationController
     connection = Faraday.new(url: 'https://api.openai.com') do |faraday|
       faraday.request :json
       faraday.response :json
-      faraday.options.timeout = 120  # Increase read timeout (default is usually ~60s)
-      faraday.options.open_timeout = 30  # Increase open timeout
+      faraday.options.timeout = 300  # Increase read timeout (default is usually ~60s)
+      faraday.options.open_timeout = 100  # Increase open timeout
       faraday.adapter Faraday.default_adapter
     end
     headers = { authorization: "Bearer #{token}", 'Content-Type': 'application/json' }
@@ -95,29 +95,61 @@ class HomeController < ApplicationController
       #{pdf_text.map { |p| "Page #{p[:page]}:\n#{p[:text]}" }.join("\n\n")}
 
       Provide results **strictly** in this format:
+      Dont't change the format: " and don't use commas unless necessary for clarity. Don't send anything other than the results.
       Topic: <topic>, Page: <page_number>, Paragraph: <paragraph_number>, ParagraphContext: <paragraph>, Summary: "<summary>"
       The **summary must always be enclosed in double quotes** to ensure correct parsing.
     PROMPT
 
     messages = [{ role: 'system', content: prompt }]
-
-    response = connection.post('/v1/chat/completions') do |req|
-      req.headers = headers
-      req.body = { 
-        model: 'gpt-4o', 
-        messages: messages,
-      }.to_json
-    end    
-
-    raw_results = response.body.dig("choices", 0, "message", "content") || ""
     
-    # Parse response into structured data
-    results = []
-    raw_results.each_line do |line|
-      match = line.match(/Topic: (.+?), Page: (\d+), Paragraph: ([\d.]+), ParagraphContext: (.+?) Summary: "?(.+?)"?$/)
-      next unless match
+    # response = connection.post('/v1/chat/completions') do |req|
+    #   req.headers = headers
+    #   req.body = { 
+    #     model: 'gpt-4.5-preview', 
+    #     messages: messages,
+    #   }.to_json
+    # end    
+
+    # raw_results = response.body.dig("choices", 0, "message", "content") || ""
+
+    # # Parse response into structured data
+    # results = []
+    # raw_results.each_line do |line|
+    #   match = line.match(/Topic: (.+?), Page: (\d+), Paragraph: ([\d.]+), ParagraphContext: (.+?) Summary: "?(.+?)"?$/)
+    #   next unless match
       
-      results << { topic: match[1], page: match[2].to_i, paragraph: match[3].to_i, paragraph_text: match[4], summary: match[5] }
+    #   results << { topic: match[1], page: match[2].to_i, paragraph: match[3].to_i, paragraph_text: match[4], summary: match[5] }
+    # end
+
+    # results
+    max_retries = 3
+    retries = 0
+    results = []
+
+    while retries < max_retries
+      response = connection.post('/v1/chat/completions') do |req|
+        req.headers = headers
+        req.body = { 
+          model: 'gpt-4.5-preview', 
+          messages: messages,
+        }.to_json
+      end    
+
+      raw_results = response.body.dig("choices", 0, "message", "content") || ""
+
+      # Parse response into structured data
+      results = []
+      raw_results.each_line do |line|
+        match = line.match(/Topic: (.+?), Page: (\d+), Paragraph: ([\d.]+), ParagraphContext: (.+?) Summary: "?(.+?)"?$/)
+        next unless match
+        
+        results << { topic: match[1], page: match[2].to_i, paragraph: match[3].to_i, paragraph_text: match[4], summary: match[5] }
+      end
+
+      break unless results.empty?  # Stop retrying if results are not empty
+
+      retries += 1
+      sleep(2**retries)  # Exponential backoff (2, 4, 8 seconds)
     end
 
     results

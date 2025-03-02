@@ -15,8 +15,8 @@ module PdfSummarizer
     # not contain `.rb` files, or that should not be reloaded or eager loaded.
     # Common ones are `templates`, `generators`, or `middleware`, for example.
     config.autoload_lib(ignore: %w(assets tasks))
-    # config.hosts << "3431-2400-adc5-401-800-a7f0-6aa9-ac5e-26a3.ngrok-free.app"
-    config.hosts << "pdfsummarizer-nwmj.onrender.com"
+    config.hosts << "36b2-154-80-22-157.ngrok-free.app"
+    # config.hosts << "pdfsummarizer-nwmj.onrender.com"
 
 
     # Configuration for the application, engines, and railties goes here.
